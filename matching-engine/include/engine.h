@@ -1,0 +1,21 @@
+#ifndef ENGINE_H
+#define ENGINE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "book.h"
+
+typedef struct MatchingEngine {
+    OrderBook *book;
+} MatchingEngine;
+
+bool engine_init(MatchingEngine *engine);
+void engine_destroy(MatchingEngine *engine);
+
+bool engine_add_limit(MatchingEngine *engine, uint64_t id, char side, int price, int qty);
+Order *engine_find_order(const MatchingEngine *engine, uint64_t id);
+const PriceLevel *engine_best_bid(const MatchingEngine *engine);
+const PriceLevel *engine_best_ask(const MatchingEngine *engine);
+
+#endif
