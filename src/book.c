@@ -428,6 +428,38 @@ bool order_book_remove(OrderBook *book, uint64_t id) {
     return true;
 }
 
+bool order_book_fill(OrderBook *book, Order *order, int qty) {
+    PriceLevel *level;
+    PriceLevel **tree;
+    char side;
+    int price;
+
+    if (book == NULL || order == NULL || order->level == NULL || qty <= 0 || qty > order->qty) {
+        return false;
+    }
+
+    level = order->level;
+    side = order->side;
+    price = order->price;
+    tree = side == 'B' ? &book->bids : &book->asks;
+
+    order->qty -= qty;
+    level->total_qty -= qty;
+
+    if (order->qty == 0) {
+        order_list_remove(level, order);
+        order_map_erase(&book->order_map, order->id);
+        mempool_free(&book->order_pool, order);
+
+        if (level->head == NULL) {
+            price_level_remove_node(&book->level_pool, tree, price);
+        }
+    }
+
+    order_book_refresh_bbo(book);
+    return true;
+}
+
 Order *order_book_find(const OrderBook *book, uint64_t id) {
     if (book == NULL) {
         return NULL;

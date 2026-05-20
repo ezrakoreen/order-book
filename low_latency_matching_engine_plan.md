@@ -41,33 +41,32 @@ NASDAQ-style feeds track add/cancel/execute/replace order events, and price-time
 # Repo Structure
 
 ```text
-matching-engine/
-  Makefile
-  README.md
-  include/
-    order.h
-    book.h
-    engine.h
-    parser.h
-    bench.h
-    mempool.h
-  src/
-    main.c
-    order.c
-    book.c
-    engine.c
-    parser.c
-    bench.c
-    mempool.c
-  tests/
-    test_engine.c
-    test_book.c
-    test_parser.c
-  data/
-    sample_orders.txt
-    generated_1m.txt
-  scripts/
-    gen_orders.py
+Makefile
+README.md
+include/
+  order.h
+  book.h
+  engine.h
+  parser.h
+  bench.h
+  mempool.h
+src/
+  main.c
+  order.c
+  book.c
+  engine.c
+  parser.c
+  bench.c
+  mempool.c
+tests/
+  test_engine.c
+  test_book.c
+  test_parser.c
+data/
+  sample_orders.txt
+  generated_1m.txt
+scripts/
+  gen_orders.py
 ```
 
 ---

@@ -1,10 +1,19 @@
 #include "mempool.h"
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
+static size_t round_up_to_alignment(size_t value, size_t alignment) {
+    size_t remainder = value % alignment;
+
+    return remainder == 0U ? value : value + (alignment - remainder);
+}
+
 static size_t mempool_item_size(size_t requested_size) {
-    return requested_size < sizeof(void *) ? sizeof(void *) : requested_size;
+    size_t min_size = requested_size < sizeof(void *) ? sizeof(void *) : requested_size;
+
+    return round_up_to_alignment(min_size, _Alignof(max_align_t));
 }
 
 bool mempool_init(MemoryPool *pool, size_t item_size, size_t items_per_block) {
