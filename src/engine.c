@@ -109,6 +109,44 @@ bool engine_add_market(MatchingEngine *engine, uint64_t id, char side, int qty) 
     return match_order(engine, id, side, 0, &qty);
 }
 
+bool engine_cancel(MatchingEngine *engine, uint64_t id) {
+    if (engine == NULL || engine->book == NULL || id == 0U) {
+        return false;
+    }
+
+    return order_book_remove(engine->book, id);
+}
+
+bool engine_modify(MatchingEngine *engine, uint64_t id, int price, int qty) {
+    Order *order;
+    char side;
+    int old_price;
+    int old_qty;
+
+    if (engine == NULL || engine->book == NULL || id == 0U || price <= 0 || qty <= 0) {
+        return false;
+    }
+
+    order = order_book_find(engine->book, id);
+    if (order == NULL) {
+        return false;
+    }
+
+    side = order->side;
+    old_price = order->price;
+    old_qty = order->qty;
+
+    if (price == old_price && qty <= old_qty) {
+        return order_book_modify_quantity(engine->book, id, qty);
+    }
+
+    if (!order_book_remove(engine->book, id)) {
+        return false;
+    }
+
+    return engine_add_limit(engine, id, side, price, qty);
+}
+
 Order *engine_find_order(const MatchingEngine *engine, uint64_t id) {
     if (engine == NULL || engine->book == NULL) {
         return NULL;

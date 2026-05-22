@@ -87,9 +87,29 @@ static void test_remove_and_best_price_updates(void) {
     order_book_destroy(book);
 }
 
+static void test_modify_quantity_preserves_position(void) {
+    OrderBook *book = order_book_create();
+    const PriceLevel *level;
+
+    expect(book != NULL, "book should be created");
+    expect(order_book_add(book, 40U, 'B', 100, 10), "first order should be accepted");
+    expect(order_book_add(book, 41U, 'B', 100, 15), "second order should be accepted");
+    expect(order_book_modify_quantity(book, 40U, 6), "quantity decrease should be accepted");
+
+    level = order_book_best_bid(book);
+    expect(level != NULL, "best bid should still exist after quantity modify");
+    expect(level->head != NULL && level->head->id == 40U, "modified order should keep FIFO position");
+    expect(level->tail != NULL && level->tail->id == 41U, "later order should remain tail");
+    expect(level->total_qty == 21, "level quantity should reflect modified order");
+    expect(order_book_find(book, 40U)->qty == 6, "lookup should expose modified quantity");
+
+    order_book_destroy(book);
+}
+
 int main(void) {
     test_add_and_best_prices();
     test_fifo_same_price();
     test_remove_and_best_price_updates();
+    test_modify_quantity_preserves_position();
     return 0;
 }

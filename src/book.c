@@ -460,6 +460,27 @@ bool order_book_fill(OrderBook *book, Order *order, int qty) {
     return true;
 }
 
+bool order_book_modify_quantity(OrderBook *book, uint64_t id, int qty) {
+    Order *order;
+    PriceLevel *level;
+    int delta;
+
+    if (book == NULL || qty <= 0) {
+        return false;
+    }
+
+    order = order_map_get(&book->order_map, id);
+    if (order == NULL || order->level == NULL) {
+        return false;
+    }
+
+    level = order->level;
+    delta = qty - order->qty;
+    order->qty = qty;
+    level->total_qty += delta;
+    return true;
+}
+
 Order *order_book_find(const OrderBook *book, uint64_t id) {
     if (book == NULL) {
         return NULL;

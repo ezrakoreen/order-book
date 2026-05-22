@@ -52,6 +52,7 @@ void order_book_destroy(OrderBook *book);
 bool order_book_add(OrderBook *book, uint64_t id, char side, int price, int qty);
 bool order_book_remove(OrderBook *book, uint64_t id);
 bool order_book_fill(OrderBook *book, Order *order, int qty);
+bool order_book_modify_quantity(OrderBook *book, uint64_t id, int qty);
 
 Order *order_book_find(const OrderBook *book, uint64_t id);
 const PriceLevel *order_book_best_bid(const OrderBook *book);
