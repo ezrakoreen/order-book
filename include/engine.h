@@ -8,10 +8,12 @@
 
 typedef struct MatchingEngine {
     OrderBook *book;
+    bool verbose;
 } MatchingEngine;
 
 bool engine_init(MatchingEngine *engine);
 void engine_destroy(MatchingEngine *engine);
+void engine_set_verbose(MatchingEngine *engine, bool verbose);
 
 bool engine_add_limit(MatchingEngine *engine, uint64_t id, char side, int price, int qty);
 bool engine_add_market(MatchingEngine *engine, uint64_t id, char side, int qty);

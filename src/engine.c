@@ -22,9 +22,17 @@ static PriceLevel *best_opposite_level(const MatchingEngine *engine, char side) 
     return side == 'B' ? engine->book->best_ask : engine->book->best_bid;
 }
 
-static void print_trade(uint64_t incoming_id, char incoming_side, const Order *resting, int qty) {
+static void print_trade(const MatchingEngine *engine,
+                        uint64_t incoming_id,
+                        char incoming_side,
+                        const Order *resting,
+                        int qty) {
     uint64_t buy_id = incoming_side == 'B' ? incoming_id : resting->id;
     uint64_t sell_id = incoming_side == 'B' ? resting->id : incoming_id;
+
+    if (!engine->verbose) {
+        return;
+    }
 
     printf("TRADE buy=%llu sell=%llu price=%d qty=%d\n",
            (unsigned long long)buy_id,
@@ -45,7 +53,7 @@ static bool match_order(MatchingEngine *engine, uint64_t id, char side, int limi
 
         resting = level->head;
         fill_qty = min_int(*qty, resting->qty);
-        print_trade(id, side, resting, fill_qty);
+        print_trade(engine, id, side, resting, fill_qty);
 
         if (!order_book_fill(engine->book, resting, fill_qty)) {
             return false;
@@ -63,6 +71,7 @@ bool engine_init(MatchingEngine *engine) {
     }
 
     engine->book = order_book_create();
+    engine->verbose = false;
     return engine->book != NULL;
 }
 
@@ -73,6 +82,15 @@ void engine_destroy(MatchingEngine *engine) {
 
     order_book_destroy(engine->book);
     engine->book = NULL;
+    engine->verbose = false;
+}
+
+void engine_set_verbose(MatchingEngine *engine, bool verbose) {
+    if (engine == NULL) {
+        return;
+    }
+
+    engine->verbose = verbose;
 }
 
 bool engine_add_limit(MatchingEngine *engine, uint64_t id, char side, int price, int qty) {

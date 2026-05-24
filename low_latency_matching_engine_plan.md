@@ -206,7 +206,7 @@ TRADE buy=3 sell=1 price=100 qty=25
 
 - Cancel removes order in O(1) after hash lookup
 - Modify price loses time priority
-- Modify quantity at same price preserves priority unless increasing quantity; choose one rule and document it
+- Modify quantity at same price preserves priority unless increasing quantity
 
 ---
 
@@ -216,8 +216,8 @@ TRADE buy=3 sell=1 price=100 qty=25
 
 - Parse input file line by line
 - Feed events into engine
-- Optional `--verbose` flag for trades
-- Optional `--snapshot` flag
+- `--verbose` flag for trades
+- `--snapshot` flag
 
 CLI:
 
