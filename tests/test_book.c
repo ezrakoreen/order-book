@@ -33,6 +33,12 @@ static void test_add_and_best_prices(void) {
     order_book_destroy(book);
 }
 
+static void test_rejects_invalid_allocator(void) {
+    OrderBook *book = order_book_create_with_allocator((OrderBookAllocator)99);
+
+    expect(book == NULL, "invalid allocator should be rejected");
+}
+
 static void test_fifo_same_price(void) {
     OrderBook *book = order_book_create();
     const PriceLevel *level;
@@ -108,6 +114,7 @@ static void test_modify_quantity_preserves_position(void) {
 
 int main(void) {
     test_add_and_best_prices();
+    test_rejects_invalid_allocator();
     test_fifo_same_price();
     test_remove_and_best_price_updates();
     test_modify_quantity_preserves_position();

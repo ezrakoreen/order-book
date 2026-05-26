@@ -522,6 +522,7 @@ static bool run_commands(const char *name,
     struct timespec total_end;
     uint64_t total_ns;
     size_t i;
+    bool success = false;
 
     memset(result, 0, sizeof(*result));
     snprintf(result->name, sizeof(result->name), "%s", name);
@@ -532,8 +533,7 @@ static bool run_commands(const char *name,
     }
 
     if (scenario != NULL && !prepopulate_scenario(&engine, *scenario, count, error, error_size)) {
-        engine_destroy(&engine);
-        return false;
+        goto cleanup;
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &total_start);
@@ -550,8 +550,7 @@ static bool run_commands(const char *name,
                                   commands[i].line_no,
                                   error,
                                   error_size)) {
-            engine_destroy(&engine);
-            return false;
+            goto cleanup;
         }
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
@@ -562,8 +561,7 @@ static bool run_commands(const char *name,
         if (!collector_append(&overall, latency, error, error_size) ||
             !collector_append(&by_command[type_index], latency, error, error_size) ||
             !collector_append(&by_fill_bucket[bucket_index], latency, error, error_size)) {
-            engine_destroy(&engine);
-            return false;
+            goto cleanup;
         }
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &total_end);
@@ -580,6 +578,9 @@ static bool run_commands(const char *name,
         collector_finish(&by_fill_bucket[i], &result->by_fill_bucket[i]);
     }
 
+    success = true;
+
+cleanup:
     collector_destroy(&overall);
     for (i = 0U; i < BENCHMARK_COMMAND_TYPE_COUNT; ++i) {
         collector_destroy(&by_command[i]);
@@ -588,7 +589,7 @@ static bool run_commands(const char *name,
         collector_destroy(&by_fill_bucket[i]);
     }
     engine_destroy(&engine);
-    return true;
+    return success;
 }
 
 bool benchmark_file(const char *path, BenchmarkResult *result, char *error, size_t error_size) {

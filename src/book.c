@@ -365,7 +365,13 @@ OrderBook *order_book_create(void) {
 }
 
 OrderBook *order_book_create_with_allocator(OrderBookAllocator allocator) {
-    OrderBook *book = calloc(1U, sizeof(*book));
+    OrderBook *book;
+
+    if (allocator != ORDER_BOOK_ALLOCATOR_POOL && allocator != ORDER_BOOK_ALLOCATOR_MALLOC) {
+        return NULL;
+    }
+
+    book = calloc(1U, sizeof(*book));
     if (book == NULL) {
         return NULL;
     }
