@@ -54,6 +54,7 @@ static bool match_order(MatchingEngine *engine, uint64_t id, char side, int limi
         resting = level->head;
         fill_qty = min_int(*qty, resting->qty);
         print_trade(engine, id, side, resting, fill_qty);
+        engine->last_fill_count += 1U;
 
         if (!order_book_fill(engine->book, resting, fill_qty)) {
             return false;
@@ -72,6 +73,7 @@ bool engine_init(MatchingEngine *engine) {
 
     engine->book = order_book_create();
     engine->verbose = false;
+    engine->last_fill_count = 0U;
     return engine->book != NULL;
 }
 
@@ -83,6 +85,7 @@ void engine_destroy(MatchingEngine *engine) {
     order_book_destroy(engine->book);
     engine->book = NULL;
     engine->verbose = false;
+    engine->last_fill_count = 0U;
 }
 
 void engine_set_verbose(MatchingEngine *engine, bool verbose) {
@@ -103,6 +106,7 @@ bool engine_add_limit(MatchingEngine *engine, uint64_t id, char side, int price,
         return false;
     }
 
+    engine->last_fill_count = 0U;
     if (!match_order(engine, id, side, price, &qty)) {
         return false;
     }
@@ -124,6 +128,7 @@ bool engine_add_market(MatchingEngine *engine, uint64_t id, char side, int qty) 
         return false;
     }
 
+    engine->last_fill_count = 0U;
     return match_order(engine, id, side, 0, &qty);
 }
 
@@ -132,6 +137,7 @@ bool engine_cancel(MatchingEngine *engine, uint64_t id) {
         return false;
     }
 
+    engine->last_fill_count = 0U;
     return order_book_remove(engine->book, id);
 }
 
@@ -145,6 +151,7 @@ bool engine_modify(MatchingEngine *engine, uint64_t id, int price, int qty) {
         return false;
     }
 
+    engine->last_fill_count = 0U;
     order = order_book_find(engine->book, id);
     if (order == NULL) {
         return false;
@@ -163,6 +170,14 @@ bool engine_modify(MatchingEngine *engine, uint64_t id, int price, int qty) {
     }
 
     return engine_add_limit(engine, id, side, price, qty);
+}
+
+size_t engine_last_fill_count(const MatchingEngine *engine) {
+    if (engine == NULL) {
+        return 0U;
+    }
+
+    return engine->last_fill_count;
 }
 
 Order *engine_find_order(const MatchingEngine *engine, uint64_t id) {

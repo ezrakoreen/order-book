@@ -2,7 +2,6 @@
 
 #include <errno.h>
 #include <limits.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,7 +79,11 @@ static bool has_extra_token(char **cursor) {
     return next_token(cursor) != NULL;
 }
 
-static bool replay_add(MatchingEngine *engine, char **cursor, char *error, size_t error_size, size_t line_no) {
+static bool parse_add(ReplayCommand *command,
+                      char **cursor,
+                      char *error,
+                      size_t error_size,
+                      size_t line_no) {
     uint64_t id;
     char side;
     int price;
@@ -95,19 +98,19 @@ static bool replay_add(MatchingEngine *engine, char **cursor, char *error, size_
         return false;
     }
 
-    if (!engine_add_limit(engine, id, side, price, qty)) {
-        set_error(error, error_size, line_no, "ADD rejected by matching engine");
-        return false;
-    }
-
+    command->type = REPLAY_COMMAND_ADD;
+    command->id = id;
+    command->side = side;
+    command->price = price;
+    command->qty = qty;
     return true;
 }
 
-static bool replay_market(MatchingEngine *engine,
-                          char **cursor,
-                          char *error,
-                          size_t error_size,
-                          size_t line_no) {
+static bool parse_market(ReplayCommand *command,
+                         char **cursor,
+                         char *error,
+                         size_t error_size,
+                         size_t line_no) {
     uint64_t id;
     char side;
     int qty;
@@ -120,19 +123,19 @@ static bool replay_market(MatchingEngine *engine,
         return false;
     }
 
-    if (!engine_add_market(engine, id, side, qty)) {
-        set_error(error, error_size, line_no, "MARKET rejected by matching engine");
-        return false;
-    }
-
+    command->type = REPLAY_COMMAND_MARKET;
+    command->id = id;
+    command->side = side;
+    command->price = 0;
+    command->qty = qty;
     return true;
 }
 
-static bool replay_cancel(MatchingEngine *engine,
-                          char **cursor,
-                          char *error,
-                          size_t error_size,
-                          size_t line_no) {
+static bool parse_cancel(ReplayCommand *command,
+                         char **cursor,
+                         char *error,
+                         size_t error_size,
+                         size_t line_no) {
     uint64_t id;
 
     if (!parse_u64(next_token(cursor), &id) || has_extra_token(cursor)) {
@@ -140,19 +143,19 @@ static bool replay_cancel(MatchingEngine *engine,
         return false;
     }
 
-    if (!engine_cancel(engine, id)) {
-        set_error(error, error_size, line_no, "CANCEL rejected by matching engine");
-        return false;
-    }
-
+    command->type = REPLAY_COMMAND_CANCEL;
+    command->id = id;
+    command->side = '\0';
+    command->price = 0;
+    command->qty = 0;
     return true;
 }
 
-static bool replay_modify(MatchingEngine *engine,
-                          char **cursor,
-                          char *error,
-                          size_t error_size,
-                          size_t line_no) {
+static bool parse_modify(ReplayCommand *command,
+                         char **cursor,
+                         char *error,
+                         size_t error_size,
+                         size_t line_no) {
     uint64_t id;
     int price;
     int qty;
@@ -165,37 +168,95 @@ static bool replay_modify(MatchingEngine *engine,
         return false;
     }
 
-    if (!engine_modify(engine, id, price, qty)) {
-        set_error(error, error_size, line_no, "MODIFY rejected by matching engine");
-        return false;
-    }
-
+    command->type = REPLAY_COMMAND_MODIFY;
+    command->id = id;
+    command->side = '\0';
+    command->price = price;
+    command->qty = qty;
     return true;
 }
 
-static bool replay_line(MatchingEngine *engine,
-                        char *line,
-                        size_t line_no,
-                        char *error,
-                        size_t error_size) {
-    char *cursor = line;
-    char *command = next_token(&cursor);
+bool replay_parse_line(const char *line,
+                       size_t line_no,
+                       ReplayCommand *parsed,
+                       bool *has_command,
+                       char *error,
+                       size_t error_size) {
+    char scratch[REPLAY_LINE_MAX];
+    char *cursor = scratch;
+    char *command;
+
+    if (line == NULL || parsed == NULL || has_command == NULL) {
+        set_error(error, error_size, 0U, "invalid replay arguments");
+        return false;
+    }
+
+    if (strlen(line) >= sizeof(scratch)) {
+        set_error(error, error_size, line_no, "line is too long");
+        return false;
+    }
+
+    memcpy(scratch, line, strlen(line) + 1U);
+    command = next_token(&cursor);
+    *has_command = false;
 
     if (command == NULL || command[0] == '#') {
         return true;
     }
 
+    *has_command = true;
     if (strcmp(command, "ADD") == 0) {
-        return replay_add(engine, &cursor, error, error_size, line_no);
+        return parse_add(parsed, &cursor, error, error_size, line_no);
     }
     if (strcmp(command, "MARKET") == 0) {
-        return replay_market(engine, &cursor, error, error_size, line_no);
+        return parse_market(parsed, &cursor, error, error_size, line_no);
     }
     if (strcmp(command, "CANCEL") == 0) {
-        return replay_cancel(engine, &cursor, error, error_size, line_no);
+        return parse_cancel(parsed, &cursor, error, error_size, line_no);
     }
     if (strcmp(command, "MODIFY") == 0) {
-        return replay_modify(engine, &cursor, error, error_size, line_no);
+        return parse_modify(parsed, &cursor, error, error_size, line_no);
+    }
+
+    set_error(error, error_size, line_no, "unknown command");
+    return false;
+}
+
+bool replay_apply_command(MatchingEngine *engine,
+                          const ReplayCommand *command,
+                          size_t line_no,
+                          char *error,
+                          size_t error_size) {
+    if (engine == NULL || command == NULL) {
+        set_error(error, error_size, 0U, "invalid replay arguments");
+        return false;
+    }
+
+    switch (command->type) {
+        case REPLAY_COMMAND_ADD:
+            if (engine_add_limit(engine, command->id, command->side, command->price, command->qty)) {
+                return true;
+            }
+            set_error(error, error_size, line_no, "ADD rejected by matching engine");
+            return false;
+        case REPLAY_COMMAND_MARKET:
+            if (engine_add_market(engine, command->id, command->side, command->qty)) {
+                return true;
+            }
+            set_error(error, error_size, line_no, "MARKET rejected by matching engine");
+            return false;
+        case REPLAY_COMMAND_CANCEL:
+            if (engine_cancel(engine, command->id)) {
+                return true;
+            }
+            set_error(error, error_size, line_no, "CANCEL rejected by matching engine");
+            return false;
+        case REPLAY_COMMAND_MODIFY:
+            if (engine_modify(engine, command->id, command->price, command->qty)) {
+                return true;
+            }
+            set_error(error, error_size, line_no, "MODIFY rejected by matching engine");
+            return false;
     }
 
     set_error(error, error_size, line_no, "unknown command");
@@ -232,9 +293,19 @@ bool replay_file(MatchingEngine *engine, const char *path, char *error, size_t e
             return false;
         }
 
-        if (!replay_line(engine, line, line_no, error, error_size)) {
-            fclose(file);
-            return false;
+        {
+            ReplayCommand command;
+            bool has_command;
+
+            if (!replay_parse_line(line, line_no, &command, &has_command, error, error_size)) {
+                fclose(file);
+                return false;
+            }
+            if (has_command &&
+                !replay_apply_command(engine, &command, line_no, error, error_size)) {
+                fclose(file);
+                return false;
+            }
         }
     }
 

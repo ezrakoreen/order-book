@@ -1,4 +1,7 @@
 .DS_Store
+engine
 test_book
+test_benchmark
 test_engine
 test_mempool
+test_replay

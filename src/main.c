@@ -1,19 +1,53 @@
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "benchmark.h"
 #include "engine.h"
 #include "replay.h"
 
 static void usage(const char *program) {
-    fprintf(stderr, "usage: %s [--verbose] [--snapshot] <input-file>\n", program);
+    fprintf(stderr,
+            "usage: %s [--verbose] [--snapshot] <input-file>\n"
+            "       %s --bench <input-file>\n"
+            "       %s --bench-scenario <name> [--messages <count>]\n"
+            "       %s --bench-all [--messages <count>]\n"
+            "       %s --bench-list\n",
+            program,
+            program,
+            program,
+            program,
+            program);
+}
+
+static bool parse_size_arg(const char *text, size_t *value) {
+    char *end = NULL;
+    unsigned long long parsed;
+
+    if (text == NULL || text[0] == '\0' || text[0] == '-') {
+        return false;
+    }
+
+    parsed = strtoull(text, &end, 10);
+    if (end == text || *end != '\0' || parsed == 0ULL) {
+        return false;
+    }
+
+    *value = (size_t)parsed;
+    return true;
 }
 
 int main(int argc, char **argv) {
     MatchingEngine engine;
     const char *path = NULL;
+    const char *bench_scenario = NULL;
     bool verbose = false;
     bool snapshot = false;
+    bool bench = false;
+    bool bench_all = false;
+    bool bench_list = false;
+    size_t bench_messages = 1000000U;
     char error[256];
     int i;
 
@@ -22,6 +56,24 @@ int main(int argc, char **argv) {
             verbose = true;
         } else if (strcmp(argv[i], "--snapshot") == 0) {
             snapshot = true;
+        } else if (strcmp(argv[i], "--bench") == 0) {
+            bench = true;
+        } else if (strcmp(argv[i], "--bench-scenario") == 0) {
+            if (i + 1 >= argc) {
+                usage(argv[0]);
+                return 2;
+            }
+            bench_scenario = argv[++i];
+        } else if (strcmp(argv[i], "--bench-all") == 0) {
+            bench_all = true;
+        } else if (strcmp(argv[i], "--bench-list") == 0) {
+            bench_list = true;
+        } else if (strcmp(argv[i], "--messages") == 0) {
+            if (i + 1 >= argc || !parse_size_arg(argv[i + 1], &bench_messages)) {
+                usage(argv[0]);
+                return 2;
+            }
+            i += 1;
         } else if (argv[i][0] == '-') {
             usage(argv[0]);
             return 2;
@@ -33,7 +85,75 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (bench_list) {
+        if (bench || bench_scenario != NULL || bench_all || path != NULL || verbose || snapshot) {
+            usage(argv[0]);
+            return 2;
+        }
+        benchmark_print_scenarios();
+        return 0;
+    }
+
+    if (bench || bench_scenario != NULL || bench_all) {
+        BenchmarkResult result;
+
+        if (verbose || snapshot) {
+            usage(argv[0]);
+            return 2;
+        }
+
+        if (bench) {
+            if (path == NULL || bench_scenario != NULL || bench_all) {
+                usage(argv[0]);
+                return 2;
+            }
+            if (!benchmark_file(path, &result, error, sizeof(error))) {
+                fprintf(stderr, "error: %s\n", error);
+                return 1;
+            }
+            benchmark_print_result(&result);
+            return 0;
+        }
+
+        if (bench_scenario != NULL) {
+            if (path != NULL || bench_all) {
+                usage(argv[0]);
+                return 2;
+            }
+            if (!benchmark_scenario(bench_scenario, bench_messages, &result, error, sizeof(error))) {
+                fprintf(stderr, "error: %s\n", error);
+                return 1;
+            }
+            benchmark_print_result(&result);
+            return 0;
+        }
+
+        if (path != NULL) {
+            usage(argv[0]);
+            return 2;
+        }
+
+        for (size_t index = 0U; index < benchmark_scenario_count(); ++index) {
+            const char *name = benchmark_scenario_name(index);
+
+            if (!benchmark_scenario(name, bench_messages, &result, error, sizeof(error))) {
+                fprintf(stderr, "error: %s: %s\n", name, error);
+                return 1;
+            }
+            if (index > 0U) {
+                printf("\n");
+            }
+            benchmark_print_result(&result);
+        }
+        return 0;
+    }
+
     if (path == NULL) {
+        usage(argv[0]);
+        return 2;
+    }
+
+    if (bench_messages != 1000000U) {
         usage(argv[0]);
         return 2;
     }

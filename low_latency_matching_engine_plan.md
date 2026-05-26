@@ -244,6 +244,8 @@ CLI:
 - p50 latency
 - p99 latency
 - p999 latency
+- the same latency distribution by command type (`ADD`, `MARKET`, `CANCEL`, `MODIFY`)
+- the same latency distribution by fill-count bucket (`fills_0`, `fills_1`, `fills_2_5`, `fills_6_20`, `fills_20_plus`)
 
 Use:
 
@@ -255,17 +257,48 @@ CLI:
 
 ```bash
 ./engine --bench data/generated_1m.txt
+./engine --bench-list
+./engine --bench-scenario market_sweep_10 --messages 100000
+./engine --bench-all --messages 100000
 ```
+
+`--bench <file>` parses the replay file before timing so file I/O is excluded from the timed
+section. Scenario benchmarks generate their command streams in memory.
+
+Implemented scenarios:
+
+- `add_only`: resting order insertion
+- `add_cancel`: alternating insert/remove
+- `cancel_only`: lookup and removal against a preloaded book
+- `modify_qty_down`: same-price quantity reduction
+- `modify_reprice`: cancel and re-add at a new price
+- `limit_cross`: crossing limit orders that each fill one resting order
+- `market_match_1`: market orders that each fill one resting order
+- `market_sweep_10`: market orders that each sweep ten resting orders
+- `deep_book_best_price`: operations against a deep, unbalanced price-level tree
+- `mixed`: deterministic mix of add, cancel, modify, crossing limit, and market messages
 
 Output:
 
 ```text
-messages: 1000000
-throughput: 3.2M msg/s
-latency_ns_avg: 310
-latency_ns_p50: 220
-latency_ns_p99: 900
-latency_ns_p999: 1800
+scenario: market_sweep_10
+messages: 100000
+throughput: 0.78M msg/s
+overall_count: 100000
+overall_latency_ns_avg: 1259
+overall_latency_ns_p50: 1208
+overall_latency_ns_p99: 2250
+overall_latency_ns_p999: 5208
+MARKET_count: 100000
+MARKET_latency_ns_avg: 1259
+MARKET_latency_ns_p50: 1208
+MARKET_latency_ns_p99: 2250
+MARKET_latency_ns_p999: 5208
+fills_6_20_count: 100000
+fills_6_20_latency_ns_avg: 1259
+fills_6_20_latency_ns_p50: 1208
+fills_6_20_latency_ns_p99: 2250
+fills_6_20_latency_ns_p999: 5208
 ```
 
 ### Acceptance Criteria
@@ -273,6 +306,8 @@ latency_ns_p999: 1800
 - Benchmarks exclude file I/O if possible
 - Store per-message latency in an array
 - Sort latencies to compute percentiles
+- Provide synthetic scenarios for core book mechanics and matching mechanics
+- Report command-type and fill-count latency slices
 
 ---
 
