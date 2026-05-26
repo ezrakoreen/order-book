@@ -67,11 +67,15 @@ static bool match_order(MatchingEngine *engine, uint64_t id, char side, int limi
 }
 
 bool engine_init(MatchingEngine *engine) {
+    return engine_init_with_allocator(engine, ORDER_BOOK_ALLOCATOR_POOL);
+}
+
+bool engine_init_with_allocator(MatchingEngine *engine, OrderBookAllocator allocator) {
     if (engine == NULL) {
         return false;
     }
 
-    engine->book = order_book_create();
+    engine->book = order_book_create_with_allocator(allocator);
     engine->verbose = false;
     engine->last_fill_count = 0U;
     return engine->book != NULL;

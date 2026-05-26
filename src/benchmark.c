@@ -510,6 +510,7 @@ static bool run_commands(const char *name,
                          BenchCommand *commands,
                          size_t count,
                          BenchmarkScenario *scenario,
+                         OrderBookAllocator allocator,
                          BenchmarkResult *result,
                          char *error,
                          size_t error_size) {
@@ -525,7 +526,7 @@ static bool run_commands(const char *name,
     memset(result, 0, sizeof(*result));
     snprintf(result->name, sizeof(result->name), "%s", name);
 
-    if (!engine_init(&engine)) {
+    if (!engine_init_with_allocator(&engine, allocator)) {
         set_error(error, error_size, "failed to initialize matching engine");
         return false;
     }
@@ -604,9 +605,54 @@ bool benchmark_file(const char *path, BenchmarkResult *result, char *error, size
         return false;
     }
 
-    ok = run_commands("file", commands, count, NULL, result, error, error_size);
+    ok = run_commands("file", commands, count, NULL, ORDER_BOOK_ALLOCATOR_POOL, result, error, error_size);
     free(commands);
     return ok;
+}
+
+bool benchmark_file_allocator_comparison(const char *path,
+                                         BenchmarkAllocatorComparison *comparison,
+                                         char *error,
+                                         size_t error_size) {
+    BenchCommand *commands = NULL;
+    size_t count = 0U;
+
+    if (path == NULL || comparison == NULL) {
+        set_error(error, error_size, "invalid benchmark arguments");
+        return false;
+    }
+
+    memset(comparison, 0, sizeof(*comparison));
+    if (!load_commands(path, &commands, &count, error, error_size)) {
+        return false;
+    }
+
+    if (!run_commands("file_pool",
+                      commands,
+                      count,
+                      NULL,
+                      ORDER_BOOK_ALLOCATOR_POOL,
+                      &comparison->pool,
+                      error,
+                      error_size) ||
+        !run_commands("file_malloc",
+                      commands,
+                      count,
+                      NULL,
+                      ORDER_BOOK_ALLOCATOR_MALLOC,
+                      &comparison->malloc_result,
+                      error,
+                      error_size)) {
+        free(commands);
+        return false;
+    }
+
+    comparison->pool_throughput_ratio =
+        comparison->malloc_result.messages_per_second == 0.0
+            ? 0.0
+            : comparison->pool.messages_per_second / comparison->malloc_result.messages_per_second;
+    free(commands);
+    return true;
 }
 
 bool benchmark_scenario(const char *name,
@@ -614,6 +660,20 @@ bool benchmark_scenario(const char *name,
                         BenchmarkResult *result,
                         char *error,
                         size_t error_size) {
+    return benchmark_scenario_with_allocator(name,
+                                             messages,
+                                             ORDER_BOOK_ALLOCATOR_POOL,
+                                             result,
+                                             error,
+                                             error_size);
+}
+
+bool benchmark_scenario_with_allocator(const char *name,
+                                       size_t messages,
+                                       OrderBookAllocator allocator,
+                                       BenchmarkResult *result,
+                                       char *error,
+                                       size_t error_size) {
     BenchmarkScenario scenario;
     BenchCommand *commands = NULL;
     size_t count = 0U;
@@ -631,9 +691,71 @@ bool benchmark_scenario(const char *name,
         return false;
     }
 
-    ok = run_commands(name, commands, count, &scenario, result, error, error_size);
+    ok = run_commands(name,
+                      commands,
+                      count,
+                      &scenario,
+                      allocator,
+                      result,
+                      error,
+                      error_size);
     free(commands);
     return ok;
+}
+
+bool benchmark_scenario_allocator_comparison(const char *name,
+                                             size_t messages,
+                                             BenchmarkAllocatorComparison *comparison,
+                                             char *error,
+                                             size_t error_size) {
+    BenchmarkScenario scenario;
+    BenchCommand *commands = NULL;
+    char pool_name[BENCHMARK_NAME_MAX];
+    char malloc_name[BENCHMARK_NAME_MAX];
+    size_t count = 0U;
+
+    if (name == NULL || comparison == NULL || messages == 0U) {
+        set_error(error, error_size, "invalid benchmark arguments");
+        return false;
+    }
+    if (!find_scenario(name, &scenario)) {
+        set_error(error, error_size, "unknown benchmark scenario");
+        return false;
+    }
+
+    memset(comparison, 0, sizeof(*comparison));
+    if (!generate_scenario(scenario, messages, &commands, &count, error, error_size)) {
+        return false;
+    }
+
+    snprintf(pool_name, sizeof(pool_name), "%s_pool", name);
+    snprintf(malloc_name, sizeof(malloc_name), "%s_malloc", name);
+    if (!run_commands(pool_name,
+                      commands,
+                      count,
+                      &scenario,
+                      ORDER_BOOK_ALLOCATOR_POOL,
+                      &comparison->pool,
+                      error,
+                      error_size) ||
+        !run_commands(malloc_name,
+                      commands,
+                      count,
+                      &scenario,
+                      ORDER_BOOK_ALLOCATOR_MALLOC,
+                      &comparison->malloc_result,
+                      error,
+                      error_size)) {
+        free(commands);
+        return false;
+    }
+
+    comparison->pool_throughput_ratio =
+        comparison->malloc_result.messages_per_second == 0.0
+            ? 0.0
+            : comparison->pool.messages_per_second / comparison->malloc_result.messages_per_second;
+    free(commands);
+    return true;
 }
 
 static void print_latency_line(const char *label, const BenchmarkLatencyStats *stats) {
@@ -667,6 +789,18 @@ void benchmark_print_result(const BenchmarkResult *result) {
             print_latency_line(fill_bucket_label(i), &result->by_fill_bucket[i]);
         }
     }
+}
+
+void benchmark_print_allocator_comparison(const BenchmarkAllocatorComparison *comparison) {
+    if (comparison == NULL) {
+        return;
+    }
+
+    printf("allocator: memory_pool\n");
+    benchmark_print_result(&comparison->pool);
+    printf("\nallocator: malloc\n");
+    benchmark_print_result(&comparison->malloc_result);
+    printf("\npool_vs_malloc_throughput: %.3fx\n", comparison->pool_throughput_ratio);
 }
 
 void benchmark_print_scenarios(void) {

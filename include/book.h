@@ -32,6 +32,11 @@ typedef struct OrderMap {
     size_t tombstones;
 } OrderMap;
 
+typedef enum OrderBookAllocator {
+    ORDER_BOOK_ALLOCATOR_POOL,
+    ORDER_BOOK_ALLOCATOR_MALLOC
+} OrderBookAllocator;
+
 typedef struct OrderBook {
     PriceLevel *bids;
     PriceLevel *asks;
@@ -42,11 +47,13 @@ typedef struct OrderBook {
     OrderMap order_map;
     MemoryPool order_pool;
     MemoryPool level_pool;
+    OrderBookAllocator allocator;
 
     uint64_t timestamp;
 } OrderBook;
 
 OrderBook *order_book_create(void);
+OrderBook *order_book_create_with_allocator(OrderBookAllocator allocator);
 void order_book_destroy(OrderBook *book);
 
 bool order_book_add(OrderBook *book, uint64_t id, char side, int price, int qty);

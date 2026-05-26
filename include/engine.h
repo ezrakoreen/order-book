@@ -14,6 +14,7 @@ typedef struct MatchingEngine {
 } MatchingEngine;
 
 bool engine_init(MatchingEngine *engine);
+bool engine_init_with_allocator(MatchingEngine *engine, OrderBookAllocator allocator);
 void engine_destroy(MatchingEngine *engine);
 void engine_set_verbose(MatchingEngine *engine, bool verbose);
 

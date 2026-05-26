@@ -29,6 +29,20 @@ static void test_exposes_book_state(void) {
     engine_destroy(&engine);
 }
 
+static void test_malloc_allocator_matches_engine_basics(void) {
+    MatchingEngine engine;
+
+    expect(engine_init_with_allocator(&engine, ORDER_BOOK_ALLOCATOR_MALLOC),
+           "malloc-backed engine should initialize");
+    expect(engine_add_limit(&engine, 1U, 'S', 100, 10), "malloc engine should accept ask");
+    expect(engine_add_limit(&engine, 2U, 'B', 101, 4), "malloc engine should match crossing bid");
+    expect(engine_find_order(&engine, 1U) != NULL, "malloc engine should retain ask residual");
+    expect(engine_find_order(&engine, 1U)->qty == 6, "malloc engine residual quantity should match");
+    expect(engine_find_order(&engine, 2U) == NULL, "fully filled incoming order should not rest");
+
+    engine_destroy(&engine);
+}
+
 static void test_incoming_buy_crosses_asks_fifo(void) {
     MatchingEngine engine;
     const PriceLevel *best_ask;
@@ -159,6 +173,7 @@ static void test_modify_price_readds_and_can_match(void) {
 
 int main(void) {
     test_exposes_book_state();
+    test_malloc_allocator_matches_engine_basics();
     test_incoming_buy_crosses_asks_fifo();
     test_incoming_sell_crosses_bids_and_rests_residual();
     test_market_order_never_rests();

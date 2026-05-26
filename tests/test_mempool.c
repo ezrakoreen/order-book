@@ -29,7 +29,22 @@ static void test_allocations_are_max_aligned(void) {
     mempool_destroy(&pool);
 }
 
+static void test_free_reuses_slot(void) {
+    MemoryPool pool;
+    void *first;
+    void *second;
+
+    expect(mempool_init(&pool, sizeof(uint64_t), 2U), "pool should initialize for free test");
+    first = mempool_alloc(&pool);
+    expect(first != NULL, "first allocation should succeed");
+    mempool_free(&pool, first);
+    second = mempool_alloc(&pool);
+    expect(second == first, "freed slot should be reused");
+    mempool_destroy(&pool);
+}
+
 int main(void) {
     test_allocations_are_max_aligned();
+    test_free_reuses_slot();
     return 0;
 }

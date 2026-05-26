@@ -57,6 +57,24 @@ static void test_scenario_benchmark_reports_named_slices(void) {
     expect(result.by_fill_bucket[3].count == 8U, "sweep scenario should report 6-20 fill bucket");
 }
 
+static void test_allocator_comparison_runs_pool_and_malloc(void) {
+    BenchmarkAllocatorComparison comparison;
+    char error[256] = "";
+
+    expect(benchmark_scenario_allocator_comparison("add_cancel",
+                                                   12U,
+                                                   &comparison,
+                                                   error,
+                                                   sizeof(error)),
+           "allocator comparison should succeed");
+    expect(comparison.pool.messages == 12U, "pool comparison should run requested messages");
+    expect(comparison.malloc_result.messages == 12U, "malloc comparison should run requested messages");
+    expect(comparison.pool.messages_per_second > 0.0, "pool comparison throughput should be positive");
+    expect(comparison.malloc_result.messages_per_second > 0.0,
+           "malloc comparison throughput should be positive");
+    expect(comparison.pool_throughput_ratio > 0.0, "allocator comparison should report a ratio");
+}
+
 static void test_benchmark_reports_parse_errors(void) {
     BenchmarkResult result;
     char error[256] = "";
@@ -72,6 +90,7 @@ static void test_benchmark_reports_parse_errors(void) {
 int main(void) {
     test_benchmark_reports_message_count_and_latency_stats();
     test_scenario_benchmark_reports_named_slices();
+    test_allocator_comparison_runs_pool_and_malloc();
     test_benchmark_reports_parse_errors();
     remove(benchmark_path);
     return 0;

@@ -1,5 +1,6 @@
 CC := cc
-CFLAGS := -std=c17 -Wall -Wextra -Wpedantic -Werror -Iinclude
+CFLAGS := -std=c17 -Wall -Wextra -Wpedantic -Werror -O3 -march=native -Iinclude
+DEBUG_CFLAGS := -std=c17 -Wall -Wextra -Wpedantic -Werror -g -O0 -fsanitize=address,undefined -Iinclude
 
 LIB_SRCS := src/order.c src/book.c src/engine.c src/mempool.c
 ENGINE_SRCS := src/main.c src/replay.c src/benchmark.c $(LIB_SRCS)
@@ -10,7 +11,7 @@ TEST_MEMPOOL_SRCS := tests/test_mempool.c src/mempool.c
 TEST_REPLAY_SRCS := tests/test_replay.c src/replay.c $(LIB_SRCS)
 TEST_BENCHMARK_SRCS := tests/test_benchmark.c src/benchmark.c src/replay.c $(LIB_SRCS)
 
-.PHONY: all test clean
+.PHONY: all test bench debug clean
 
 all: engine test_book test_engine test_mempool test_replay test_benchmark
 
@@ -39,5 +40,11 @@ test: test_book test_engine test_mempool test_replay test_benchmark
 	./test_replay
 	./test_benchmark
 
+bench: engine
+	./engine --bench-scenario add_cancel --bench-allocators --messages 100000
+
+debug: $(ENGINE_SRCS)
+	$(CC) $(DEBUG_CFLAGS) -o engine_debug $(ENGINE_SRCS)
+
 clean:
-	rm -f engine test_book test_engine test_mempool test_replay test_benchmark
+	rm -rf engine engine_debug engine_debug.dSYM test_book test_engine test_mempool test_replay test_benchmark

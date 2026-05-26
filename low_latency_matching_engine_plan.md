@@ -234,7 +234,7 @@ CLI:
 
 ---
 
-## Milestone 5: Benchmarking
+## Milestone 5: Speed Benchmarking
 
 ### Measure
 
@@ -311,7 +311,8 @@ fills_6_20_latency_ns_p999: 5208
 
 ---
 
-## Milestone 6: Memory Pool
+## Milestone 6: Memory Pool + Benchmarking
+Note: ended up implementing most of memory pool as part of milestone 1
 
 ### Implement
 
@@ -496,159 +497,3 @@ void free_order(MemoryPool* pool, Order* order);
 ```
 
 ---
-
-# Suggested Development Order
-
-## Week 1
-
-- repo setup
-- Makefile
-- order structs
-- price levels
-- linked lists
-
-## Week 2
-
-- matching logic
-- partial fills
-- trade generation
-- parser
-
-## Week 3
-
-- cancel/modify
-- benchmarks
-- latency tracking
-- tests
-
-## Week 4
-
-- memory pool
-- profiling
-- optimizations
-- README cleanup
-
----
-
-# Optimization Ideas
-
-After MVP:
-
-- branch prediction hints
-- cache line alignment
-- SIMD parsing
-- intrusive containers
-- object recycling
-- CPU affinity
-- prefetching
-- arena allocators
-
----
-
-# Future Extensions
-
-## Networking
-
-- TCP order gateway
-- UDP multicast feed
-- binary protocol parser
-
-## Concurrency
-
-- lock-free SPSC queue
-- dedicated market-data thread
-- producer-consumer architecture
-
-## Matching Improvements
-
-- multi-symbol support
-- iceberg orders
-- stop orders
-- hidden liquidity
-
-## Data Structures
-
-- AVL tree
-- red-black tree
-- skip list
-- radix tree
-
-## Performance Tooling
-
-- perf
-- flamegraphs
-- cachegrind
-- hardware counters
-
----
-
-# README Checklist
-
-Include:
-
-1. Project overview
-2. Features
-3. Matching rules
-4. Data structures
-5. Build instructions
-6. Usage examples
-7. Benchmark results
-8. Optimization notes
-9. Future work
-
----
-
-# Example Resume Bullets
-
-## Version 1
-
-- Built a low-latency C limit order book and matching engine supporting price-time priority, market/limit orders, and deterministic replay over 1M+ simulated events.
-
-## Version 2
-
-- Implemented a high-performance matching engine in C with custom memory pools and O(1) order lookup, achieving multi-million message/sec throughput and p99 latency benchmarking.
-
-## Version 3
-
-- Designed a cache-conscious exchange simulator in C with intrusive linked lists, replayable market data feeds, and percentile latency instrumentation.
-
----
-
-# Codex Workflow
-
-Use milestone-by-milestone prompting.
-
-Example:
-
-```text
-Implement Milestone 1 only.
-
-Requirements:
-- Follow repo structure exactly
-- Use C17
-- Add unit tests
-- No external dependencies
-- Use intrusive doubly linked lists
-- Add comments explaining design choices
-```
-
-Then iterate:
-
-```text
-Now implement Milestone 2 on top of the existing codebase.
-Do not change public interfaces unless necessary.
-Add tests for partial fills and FIFO matching.
-```
-
----
-
-# Final Deliverable Goal
-
-By the end, the project should:
-
-- compile cleanly with `-Wall -Wextra -Werror`
-- support replaying large order streams
-- expose deterministic matching behavior
-- report realistic latency statistics
-- demonstrate strong systems programming fundamentals
-- be resume-worthy for quant SWE / low-latency infra recruiting

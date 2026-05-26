@@ -10,9 +10,9 @@
 static void usage(const char *program) {
     fprintf(stderr,
             "usage: %s [--verbose] [--snapshot] <input-file>\n"
-            "       %s --bench <input-file>\n"
-            "       %s --bench-scenario <name> [--messages <count>]\n"
-            "       %s --bench-all [--messages <count>]\n"
+            "       %s --bench [--bench-allocators] <input-file>\n"
+            "       %s --bench-scenario <name> [--bench-allocator <memory_pool|malloc>] [--bench-allocators] [--messages <count>]\n"
+            "       %s --bench-all [--bench-allocator <memory_pool|malloc>] [--bench-allocators] [--messages <count>]\n"
             "       %s --bench-list\n",
             program,
             program,
@@ -46,7 +46,9 @@ int main(int argc, char **argv) {
     bool snapshot = false;
     bool bench = false;
     bool bench_all = false;
+    bool bench_allocators = false;
     bool bench_list = false;
+    OrderBookAllocator bench_allocator = ORDER_BOOK_ALLOCATOR_POOL;
     size_t bench_messages = 1000000U;
     char error[256];
     int i;
@@ -66,6 +68,22 @@ int main(int argc, char **argv) {
             bench_scenario = argv[++i];
         } else if (strcmp(argv[i], "--bench-all") == 0) {
             bench_all = true;
+        } else if (strcmp(argv[i], "--bench-allocators") == 0) {
+            bench_allocators = true;
+        } else if (strcmp(argv[i], "--bench-allocator") == 0) {
+            if (i + 1 >= argc) {
+                usage(argv[0]);
+                return 2;
+            }
+            i += 1;
+            if (strcmp(argv[i], "memory_pool") == 0) {
+                bench_allocator = ORDER_BOOK_ALLOCATOR_POOL;
+            } else if (strcmp(argv[i], "malloc") == 0) {
+                bench_allocator = ORDER_BOOK_ALLOCATOR_MALLOC;
+            } else {
+                usage(argv[0]);
+                return 2;
+            }
         } else if (strcmp(argv[i], "--bench-list") == 0) {
             bench_list = true;
         } else if (strcmp(argv[i], "--messages") == 0) {
@@ -86,7 +104,8 @@ int main(int argc, char **argv) {
     }
 
     if (bench_list) {
-        if (bench || bench_scenario != NULL || bench_all || path != NULL || verbose || snapshot) {
+        if (bench || bench_scenario != NULL || bench_all || bench_allocators ||
+            bench_allocator != ORDER_BOOK_ALLOCATOR_POOL || path != NULL || verbose || snapshot) {
             usage(argv[0]);
             return 2;
         }
@@ -95,9 +114,10 @@ int main(int argc, char **argv) {
     }
 
     if (bench || bench_scenario != NULL || bench_all) {
+        BenchmarkAllocatorComparison comparison;
         BenchmarkResult result;
 
-        if (verbose || snapshot) {
+        if (verbose || snapshot || (bench_allocators && bench_allocator != ORDER_BOOK_ALLOCATOR_POOL)) {
             usage(argv[0]);
             return 2;
         }
@@ -106,6 +126,14 @@ int main(int argc, char **argv) {
             if (path == NULL || bench_scenario != NULL || bench_all) {
                 usage(argv[0]);
                 return 2;
+            }
+            if (bench_allocators) {
+                if (!benchmark_file_allocator_comparison(path, &comparison, error, sizeof(error))) {
+                    fprintf(stderr, "error: %s\n", error);
+                    return 1;
+                }
+                benchmark_print_allocator_comparison(&comparison);
+                return 0;
             }
             if (!benchmark_file(path, &result, error, sizeof(error))) {
                 fprintf(stderr, "error: %s\n", error);
@@ -120,7 +148,24 @@ int main(int argc, char **argv) {
                 usage(argv[0]);
                 return 2;
             }
-            if (!benchmark_scenario(bench_scenario, bench_messages, &result, error, sizeof(error))) {
+            if (bench_allocators) {
+                if (!benchmark_scenario_allocator_comparison(bench_scenario,
+                                                             bench_messages,
+                                                             &comparison,
+                                                             error,
+                                                             sizeof(error))) {
+                    fprintf(stderr, "error: %s\n", error);
+                    return 1;
+                }
+                benchmark_print_allocator_comparison(&comparison);
+                return 0;
+            }
+            if (!benchmark_scenario_with_allocator(bench_scenario,
+                                                   bench_messages,
+                                                   bench_allocator,
+                                                   &result,
+                                                   error,
+                                                   sizeof(error))) {
                 fprintf(stderr, "error: %s\n", error);
                 return 1;
             }
@@ -136,7 +181,28 @@ int main(int argc, char **argv) {
         for (size_t index = 0U; index < benchmark_scenario_count(); ++index) {
             const char *name = benchmark_scenario_name(index);
 
-            if (!benchmark_scenario(name, bench_messages, &result, error, sizeof(error))) {
+            if (bench_allocators) {
+                if (!benchmark_scenario_allocator_comparison(name,
+                                                             bench_messages,
+                                                             &comparison,
+                                                             error,
+                                                             sizeof(error))) {
+                    fprintf(stderr, "error: %s: %s\n", name, error);
+                    return 1;
+                }
+                if (index > 0U) {
+                    printf("\n");
+                }
+                benchmark_print_allocator_comparison(&comparison);
+                continue;
+            }
+
+            if (!benchmark_scenario_with_allocator(name,
+                                                   bench_messages,
+                                                   bench_allocator,
+                                                   &result,
+                                                   error,
+                                                   sizeof(error))) {
                 fprintf(stderr, "error: %s: %s\n", name, error);
                 return 1;
             }
@@ -153,7 +219,8 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    if (bench_messages != 1000000U) {
+    if (bench_messages != 1000000U || bench_allocators ||
+        bench_allocator != ORDER_BOOK_ALLOCATOR_POOL) {
         usage(argv[0]);
         return 2;
     }

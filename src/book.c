@@ -9,6 +9,14 @@ enum {
     ORDER_MAP_TOMBSTONE = 2
 };
 
+#ifndef ORDER_POOL_ITEMS_PER_BLOCK
+#define ORDER_POOL_ITEMS_PER_BLOCK 128U
+#endif
+
+#ifndef LEVEL_POOL_ITEMS_PER_BLOCK
+#define LEVEL_POOL_ITEMS_PER_BLOCK 64U
+#endif
+
 /*
  * Design choice:
  * - Orders are linked directly inside each price level queue. That keeps the
@@ -203,29 +211,25 @@ static PriceLevel *price_level_max(PriceLevel *root) {
     return root;
 }
 
-static PriceLevel *price_level_insert(MemoryPool *pool, PriceLevel **root, int price, bool *created) {
-    PriceLevel **cursor = root;
-
-    while (*cursor != NULL) {
-        if (price < (*cursor)->price) {
-            cursor = &(*cursor)->left;
-        } else if (price > (*cursor)->price) {
-            cursor = &(*cursor)->right;
-        } else {
-            *created = false;
-            return *cursor;
-        }
+static void *book_alloc(OrderBook *book, MemoryPool *pool, size_t size) {
+    if (book->allocator == ORDER_BOOK_ALLOCATOR_MALLOC) {
+        return calloc(1U, size);
     }
 
-    *cursor = mempool_alloc(pool);
-    if (*cursor == NULL) {
-        *created = false;
-        return NULL;
+    return mempool_alloc(pool);
+}
+
+static void book_free(OrderBook *book, MemoryPool *pool, void *item) {
+    if (item == NULL) {
+        return;
     }
 
-    (*cursor)->price = price;
-    *created = true;
-    return *cursor;
+    if (book->allocator == ORDER_BOOK_ALLOCATOR_MALLOC) {
+        free(item);
+        return;
+    }
+
+    mempool_free(pool, item);
 }
 
 static PriceLevel *price_level_detach_min(PriceLevel **root) {
@@ -240,7 +244,35 @@ static PriceLevel *price_level_detach_min(PriceLevel **root) {
     return price_level_detach_min(&node->left);
 }
 
-static bool price_level_remove_node(MemoryPool *pool, PriceLevel **root, int price) {
+static PriceLevel *price_level_insert_for_book(OrderBook *book,
+                                               PriceLevel **root,
+                                               int price,
+                                               bool *created) {
+    PriceLevel **cursor = root;
+
+    while (*cursor != NULL) {
+        if (price < (*cursor)->price) {
+            cursor = &(*cursor)->left;
+        } else if (price > (*cursor)->price) {
+            cursor = &(*cursor)->right;
+        } else {
+            *created = false;
+            return *cursor;
+        }
+    }
+
+    *cursor = book_alloc(book, &book->level_pool, sizeof(PriceLevel));
+    if (*cursor == NULL) {
+        *created = false;
+        return NULL;
+    }
+
+    (*cursor)->price = price;
+    *created = true;
+    return *cursor;
+}
+
+static bool price_level_remove_node(OrderBook *book, PriceLevel **root, int price) {
     PriceLevel *node = *root;
 
     if (node == NULL) {
@@ -248,10 +280,10 @@ static bool price_level_remove_node(MemoryPool *pool, PriceLevel **root, int pri
     }
 
     if (price < node->price) {
-        return price_level_remove_node(pool, &node->left, price);
+        return price_level_remove_node(book, &node->left, price);
     }
     if (price > node->price) {
-        return price_level_remove_node(pool, &node->right, price);
+        return price_level_remove_node(book, &node->right, price);
     }
 
     if (node->left == NULL) {
@@ -265,18 +297,28 @@ static bool price_level_remove_node(MemoryPool *pool, PriceLevel **root, int pri
         *root = successor;
     }
 
-    mempool_free(pool, node);
+    book_free(book, &book->level_pool, node);
     return true;
 }
 
-static void price_level_free_tree(MemoryPool *pool, PriceLevel *root) {
+static void price_level_free_tree(OrderBook *book, PriceLevel *root) {
+    Order *order;
+
     if (root == NULL) {
         return;
     }
 
-    price_level_free_tree(pool, root->left);
-    price_level_free_tree(pool, root->right);
-    mempool_free(pool, root);
+    price_level_free_tree(book, root->left);
+    price_level_free_tree(book, root->right);
+
+    order = root->head;
+    while (order != NULL) {
+        Order *next = order->next;
+        book_free(book, &book->order_pool, order);
+        order = next;
+    }
+
+    book_free(book, &book->level_pool, root);
 }
 
 static void order_list_append(PriceLevel *level, Order *order) {
@@ -319,14 +361,25 @@ static void order_book_refresh_bbo(OrderBook *book) {
 }
 
 OrderBook *order_book_create(void) {
+    return order_book_create_with_allocator(ORDER_BOOK_ALLOCATOR_POOL);
+}
+
+OrderBook *order_book_create_with_allocator(OrderBookAllocator allocator) {
     OrderBook *book = calloc(1U, sizeof(*book));
     if (book == NULL) {
         return NULL;
     }
 
-    if (!order_map_init(&book->order_map, 64U) ||
-        !mempool_init(&book->order_pool, sizeof(Order), 128U) ||
-        !mempool_init(&book->level_pool, sizeof(PriceLevel), 64U)) {
+    book->allocator = allocator;
+    if (!order_map_init(&book->order_map, 64U)) {
+        order_map_destroy(&book->order_map);
+        free(book);
+        return NULL;
+    }
+
+    if (allocator == ORDER_BOOK_ALLOCATOR_POOL &&
+        (!mempool_init(&book->order_pool, sizeof(Order), ORDER_POOL_ITEMS_PER_BLOCK) ||
+         !mempool_init(&book->level_pool, sizeof(PriceLevel), LEVEL_POOL_ITEMS_PER_BLOCK))) {
         order_map_destroy(&book->order_map);
         mempool_destroy(&book->order_pool);
         mempool_destroy(&book->level_pool);
@@ -342,8 +395,8 @@ void order_book_destroy(OrderBook *book) {
         return;
     }
 
-    price_level_free_tree(&book->level_pool, book->bids);
-    price_level_free_tree(&book->level_pool, book->asks);
+    price_level_free_tree(book, book->bids);
+    price_level_free_tree(book, book->asks);
     order_map_destroy(&book->order_map);
     mempool_destroy(&book->order_pool);
     mempool_destroy(&book->level_pool);
@@ -365,15 +418,15 @@ bool order_book_add(OrderBook *book, uint64_t id, char side, int price, int qty)
     }
 
     tree = side == 'B' ? &book->bids : &book->asks;
-    level = price_level_insert(&book->level_pool, tree, price, &created);
+    level = price_level_insert_for_book(book, tree, price, &created);
     if (level == NULL) {
         return false;
     }
 
-    order = mempool_alloc(&book->order_pool);
+    order = book_alloc(book, &book->order_pool, sizeof(Order));
     if (order == NULL) {
         if (created) {
-            price_level_remove_node(&book->level_pool, tree, price);
+            price_level_remove_node(book, tree, price);
         }
         return false;
     }
@@ -384,9 +437,9 @@ bool order_book_add(OrderBook *book, uint64_t id, char side, int price, int qty)
 
     if (!order_map_put(&book->order_map, id, order)) {
         order_list_remove(level, order);
-        mempool_free(&book->order_pool, order);
+        book_free(book, &book->order_pool, order);
         if (created) {
-            price_level_remove_node(&book->level_pool, tree, price);
+            price_level_remove_node(book, tree, price);
         }
         return false;
     }
@@ -418,10 +471,10 @@ bool order_book_remove(OrderBook *book, uint64_t id) {
 
     order_list_remove(level, order);
     order_map_erase(&book->order_map, id);
-    mempool_free(&book->order_pool, order);
+    book_free(book, &book->order_pool, order);
 
     if (level->head == NULL) {
-        price_level_remove_node(&book->level_pool, tree, price);
+        price_level_remove_node(book, tree, price);
     }
 
     order_book_refresh_bbo(book);
@@ -449,10 +502,10 @@ bool order_book_fill(OrderBook *book, Order *order, int qty) {
     if (order->qty == 0) {
         order_list_remove(level, order);
         order_map_erase(&book->order_map, order->id);
-        mempool_free(&book->order_pool, order);
+        book_free(book, &book->order_pool, order);
 
         if (level->head == NULL) {
-            price_level_remove_node(&book->level_pool, tree, price);
+            price_level_remove_node(book, tree, price);
         }
     }
 

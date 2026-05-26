@@ -2,7 +2,7 @@
 
 This repository contains a C17 matching engine MVP built in milestones.
 
-Milestones 1, 2, 3, 4, and 5 are implemented:
+Milestones 1, 2, 3, 4, 5, and 6 are implemented:
 
 - create and destroy an order book
 - add buy and sell limit orders
@@ -19,6 +19,8 @@ Milestones 1, 2, 3, 4, and 5 are implemented:
 - optionally print trade events as `TRADE buy=<id> sell=<id> price=<ticks> qty=<qty>`
 - optionally print a final book snapshot
 - benchmark in-memory replay throughput and per-message latency percentiles
+- allocate orders and price levels from fixed-size memory pools by default
+- compare pooled allocation against malloc/free in benchmark mode
 
 Design notes:
 
@@ -58,7 +60,10 @@ Replay:
 ./engine --bench data/sample_orders.txt
 ./engine --bench-list
 ./engine --bench-scenario market_sweep_10 --messages 100000
+./engine --bench-scenario add_cancel --bench-allocator malloc --messages 100000
+./engine --bench-scenario add_cancel --bench-allocators --messages 100000
 ./engine --bench-all --messages 100000
+./engine --bench-all --bench-allocators --messages 100000
 ```
 
 Benchmark scenarios:
@@ -96,6 +101,47 @@ overall throughput and latency.
 The deep-book result is intentionally much slower because the current MVP uses an unbalanced
 binary search tree for price levels.
 
+Allocator benchmark results from local runs on May 26, 2026, using
+`--bench-scenario mixed --messages 100000`. The scenario generator is
+deterministic, so every allocator and block-size run used the same command stream.
+Pool block sizes were tested in 50 interleaved rounds, with price-level blocks fixed
+at 64. Malloc/free was measured as one standalone 50-run baseline.
+
+The ratio table reports memory-pool throughput divided by the common malloc/free
+baseline for the same statistic.
+
+| order block size | reps | avg ratio | p50 ratio | p99 ratio |
+| ---: | ---: | ---: | ---: | ---: |
+| 32 | 50 | 1.326x | 1.319x | 1.339x |
+| 64 | 50 | 1.292x | 1.309x | 1.320x |
+| 128 | 50 | 1.315x | 1.328x | 1.337x |
+| 256 | 50 | 1.305x | 1.304x | 1.333x |
+| 512 | 50 | 1.324x | 1.317x | 1.330x |
+| 1024 | 50 | 1.324x | 1.319x | 1.339x |
+| 4096 | 50 | 1.326x | 1.331x | 1.342x |
+| 8192 | 50 | 1.316x | 1.331x | 1.344x |
+| 16384 | 50 | 1.355x | 1.348x | 1.344x |
+
+The throughput table reports M messages per second.
+
+| allocator | order block size | reps | avg M msg/s | p50 M msg/s | p99 M msg/s | p999 M msg/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| memory_pool | 32 | 50 | 15.61 | 15.87 | 16.71 | 16.71 |
+| memory_pool | 64 | 50 | 15.21 | 15.75 | 16.47 | 16.47 |
+| memory_pool | 128 | 50 | 15.48 | 15.97 | 16.68 | 16.68 |
+| memory_pool | 256 | 50 | 15.37 | 15.69 | 16.63 | 16.63 |
+| memory_pool | 512 | 50 | 15.59 | 15.84 | 16.60 | 16.60 |
+| memory_pool | 1024 | 50 | 15.58 | 15.87 | 16.71 | 16.71 |
+| memory_pool | 4096 | 50 | 15.61 | 16.01 | 16.75 | 16.75 |
+| memory_pool | 8192 | 50 | 15.50 | 16.01 | 16.77 | 16.77 |
+| memory_pool | 16384 | 50 | 15.96 | 16.22 | 16.77 | 16.77 |
+| malloc/free | n/a | 50 | 11.77 | 12.03 | 12.48 | 12.48 |
+
+The order block size is the number of `Order` slots reserved each time the pool
+grows. Larger blocks amortize backing allocations and keep more orders contiguous,
+which is is why we see that median throughput tends to increase as block size increases.
+However, they can reserve more memory than small books need.
+
 Input format:
 
 ```text
@@ -110,4 +156,6 @@ Build and test:
 ```sh
 make
 make test
+make bench
+make debug
 ```
